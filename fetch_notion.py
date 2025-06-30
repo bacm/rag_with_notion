@@ -7,15 +7,24 @@ import requests
 
 NOTION_TOKEN = "" # TODO set token
 notion = Client(auth=NOTION_TOKEN)
-IGNORED_BLOCKS = {"divider", "callout"}
 
 # Récupère les blocs de la page
-def fetch_all_blocks(block_id):
+def fetch_all_blocks_recursive(block_id, depth=0):
     results = []
     cursor = None
     while True:
         response = notion.blocks.children.list(block_id=block_id, start_cursor=cursor)
-        results.extend(response["results"])
+        blocks = response["results"]
+        for block in blocks:
+            block["depth"] = depth  # pour info
+            results.append(block)
+
+            # Certains types peuvent avoir des enfants
+            if block.get("has_children"):
+                child_id = block["id"]
+                children = fetch_all_blocks_recursive(child_id, depth=depth + 1)
+                results.extend(children)
+
         cursor = response.get("next_cursor")
         if not cursor:
             break
@@ -28,9 +37,6 @@ def parse_blocks_to_documents(blocks, page_title):
 
     for block in blocks:
         block_type = block.get("type")
-        if block_type in IGNORED_BLOCKS:
-            continue
-
         rich_text = block.get(block_type, {}).get("rich_text", [])
         text = "".join(rt.get("plain_text", "") for rt in rich_text)
 
@@ -62,11 +68,13 @@ def get_page_title(page_id):
     return "Page sans titre"
 
 def get_chunks_and_model(page_id): 
-    blocks = fetch_all_blocks(page_id)
+    blocks = fetch_all_blocks_recursive(page_id)
+    print(f"[DEBUG] Nombre total de blocs (récursifs) : {len(blocks)}")
+
     page_title = get_page_title(page_id)
     docs = parse_blocks_to_documents(blocks, page_title)
+    print(f"[DEBUG] Nombre de documents utiles : {len(docs)}")
 
-    # Découpe en chunks
     splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
 

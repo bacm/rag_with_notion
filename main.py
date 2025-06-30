@@ -1,19 +1,22 @@
 from langchain.embeddings import HuggingFaceEmbeddings
-from query import ask_question
 from fetch_notion import get_chunks_and_model
 from psql_helpers import populate
-from langchain_community.chat_models import ChatOllama
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
-PAGE_ID = "079277cc06e0484890da360181967cca"
+PAGE_ID = "" # TODO set PAGE ID
 
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2") # TODO check if this is the rigth embedding
 chunks = get_chunks_and_model(PAGE_ID)
 vectorstore = populate(chunks, embeddings)
 
 # 1. Modèle LLM (Mixtral via Ollama)
-llm = ChatOllama(model="mixtral")
+llm = ChatOpenAI(
+    model="llama-3.1-8b-instruct", # TODO ajust model
+    api_key="", # TODO set API KEY from 1password
+    base_url="" # TODO set URL BASE from 1password
+)
 
 # 2. Mémoire de conversation
 memory = ConversationBufferMemory(
@@ -46,6 +49,13 @@ while True:
         res = qa_chain.invoke({"question": query})
         print(f"💬 Réponse : {res["answer"]}")
         print(res)
+
+        retrieved_docs = retriever.get_relevant_documents(query)
+        print(f"\n🧩 Documents retrouvés pour « {query} » : {len(retrieved_docs)}")
+        for d in retrieved_docs:
+            print(d.page_content[:300])
+
+
     except KeyboardInterrupt:
         print("\n👋 Interruption. À bientôt.")
         break
